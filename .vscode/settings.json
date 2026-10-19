@@ -1,6 +1,0 @@
-{
-    "kiroAgent.configureMCP": "Disabled",
-    "githubPullRequests.ignoredPullRequestBranches": [
-        "main"
-    ]
-}
