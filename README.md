@@ -28,14 +28,15 @@ Machine-readable details are in [deployments/testnet.json](deployments/testnet.j
 | `create_contract(client, freelancer, token, milestone_amounts) -> u64` | client | Create an escrow with up to 20 milestones |
 | `deposit_funds(id, amount)` | client | Transfer tokens into escrow (cannot exceed total) |
 | `release_milestone(id, index)` | client | Pay the freelancer for a milestone |
-| `open_dispute(id, caller)` | client or freelancer | Freeze the escrow pending resolution |
+| `open_dispute(id, caller)` | client or freelancer | Freeze the escrow and start the 14-day resolution deadline |
 | `resolve_dispute(id, freelancer_bps)` | admin | Split the held balance (basis points to freelancer) |
+| `settle_expired_dispute(id, caller)` | client or freelancer | After 14 days, split held funds 50/50 (remainder to client) |
 | `cancel_contract(id)` | client | Refund unreleased funds and close |
 | `issue_reputation(id, rating)` | client | Rate a completed job (1-5), once |
 | `set_paused(bool)` / `is_paused()` | admin / - | Circuit breaker for all mutations |
 | `get_contract(id)`, `contract_count()`, `get_reputation(addr)`, `get_admin()`, `version()` | - | Reads |
 
-Status flow: `Created -> Funded -> Completed`, with `Disputed -> Resolved` and `Cancelled` side exits.
+Status flow: `Created -> Funded -> Completed`, with `Disputed -> Resolved` by admin at any time or by either party after 14 days, and `Cancelled` as a side exit. Expired settlement emits `("disp_exp", id)` with `(to_freelancer, to_client)`; early calls return `DisputeNotExpired` (error 17). The fallback is blocked while paused (`Paused`); the admin can unpause before either party triggers settlement.
 
 ## Build and test
 
