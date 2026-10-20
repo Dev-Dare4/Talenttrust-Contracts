@@ -5,7 +5,7 @@ use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger as _},
     token::StellarAssetClient,
     token::TokenClient,
-    vec, IntoVal,
+    vec, TryIntoVal,
 };
 
 struct Setup<'a> {
@@ -158,18 +158,18 @@ fn expired_dispute_boundary_split_and_event() {
 
     s.env.ledger().set_timestamp(DISPUTE_TIMEOUT_SECS);
     s.escrow.settle_expired_dispute(&id, &s.freelancer);
+    let events = s.env.events().all();
+    let (_, topics, data) = events.get(events.len() - 1).unwrap();
+    let event_name: soroban_sdk::Symbol = topics.get(0).unwrap().try_into_val(&s.env).unwrap();
+    let event_id: u64 = topics.get(1).unwrap().try_into_val(&s.env).unwrap();
+    let event_amounts: (i128, i128) = data.try_into_val(&s.env).unwrap();
+    assert_eq!(event_name, symbol_short!("disp_exp"));
+    assert_eq!(event_id, id);
+    assert_eq!(event_amounts, (200, 201));
+
     assert_eq!(s.token.balance(&s.freelancer), 200);
     assert_eq!(s.token.balance(&s.client), 800);
     assert_eq!(s.escrow.get_contract(&id).status, ContractStatus::Resolved);
-
-    let events = s.env.events().all();
-    let (_, topics, data) = events.get(events.len() - 1).unwrap();
-    assert_eq!(
-        topics.get(0).unwrap(),
-        symbol_short!("disp_exp").into_val(&s.env)
-    );
-    assert_eq!(topics.get(1).unwrap(), id.into_val(&s.env));
-    assert_eq!(data, (200i128, 201i128).into_val(&s.env));
 }
 
 #[test]
