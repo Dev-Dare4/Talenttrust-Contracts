@@ -28,15 +28,21 @@ Machine-readable details are in [deployments/testnet.json](deployments/testnet.j
 | `create_contract(client, freelancer, token, milestone_amounts) -> u64` | client | Create an escrow with up to 20 milestones |
 | `deposit_funds(id, amount)` | client | Transfer tokens into escrow (cannot exceed total) |
 | `release_milestone(id, index)` | client | Pay the freelancer for a milestone |
-| `open_dispute(id, caller)` | client or freelancer | Freeze the escrow and start the 14-day resolution deadline |
-| `resolve_dispute(id, freelancer_bps)` | admin | Split the held balance (basis points to freelancer) |
-| `settle_expired_dispute(id, caller)` | client or freelancer | After 14 days, split held funds 50/50 (remainder to client) |
-| `cancel_contract(id)` | client | Refund unreleased funds and close |
-| `issue_reputation(id, rating)` | client | Rate a completed job (1-5), once |
+| `open_dispute(id, caller)` | client or freelancer | Freeze the escrow pending resolution (increments `disputes_opened`) |
+| `resolve_dispute(id, freelancer_bps)` | admin | Split the held balance (records dispute win/loss outcomes based on 5,000 bps threshold) |
+| `cancel_contract(id)` | client | Refund unreleased funds and close (increments `cancellations` if funds held) |
+| `issue_reputation(id, rating)` | client | Rate a completed or resolved job (1-5), once |
+| `void_rating(id, reason)` | admin | Void a fraudulent rating, reverse reputation and emit audit trail |
 | `set_paused(bool)` / `is_paused()` | admin / - | Circuit breaker for all mutations |
-| `get_contract(id)`, `contract_count()`, `get_reputation(addr)`, `get_admin()`, `version()` | - | Reads |
+| `get_contract(id)`, `get_rating(id)`, `contract_count()`, `get_reputation(addr)`, `get_outcomes(addr)`, `get_admin()`, `version()` | - | Reads |
 
-Status flow: `Created -> Funded -> Completed`, with `Disputed -> Resolved` by admin at any time or by either party after 14 days, and `Cancelled` as a side exit. Expired settlement emits `("disp_exp", id)` with `(to_freelancer, to_client)`; early calls return `DisputeNotExpired` (error 17). The fallback is blocked while paused (`Paused`); the admin can unpause before either party triggers settlement.
+Status flow: `Created -> Funded -> Completed`, with `Disputed -> Resolved` and `Cancelled` side exits. Resolved jobs allow reputation rating; dispute outcomes and cancellation metrics are tracked in persistent `Outcomes`.
+
+### Reputation Governance & Audit Trail
+- Ratings are recorded per escrow as `RatingRecord { freelancer, rating, issued_at, voided }`.
+- Protocol admin can void fraudulent or collusive ratings via `void_rating(id, reason)`, which subtracts the rating and 1 contract from the freelancer's reputation and emits `("rep_void", id) -> (freelancer, rating, reason)`.
+- Voided escrows remain flagged so they cannot be re-rated (`ReputationAlreadyIssued`). Attempting to void twice returns `EscrowError::RatingAlreadyVoided (19)`.
+- Ratings issued before this audit trail upgrade have no `RatingRecord` and return `EscrowError::RatingNotFound (18)`.
 
 ## Build and test
 
